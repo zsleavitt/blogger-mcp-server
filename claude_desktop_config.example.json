@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "blogger": {
+      "command": "node",
+      "args": [
+        "/absolute/path/to/blogger-mcp-server/dist/index.js"
+      ],
+      "env": {
+        "BLOGGER_API_KEY": "your_google_api_key_here"
+      }
+    }
+  }
+}

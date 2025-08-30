@@ -1,0 +1,24 @@
+{
+  "name": "blogger-mcp-server-fixed",
+  "version": "1.0.0",
+  "description": "Working MCP Server for Blogger API",
+  "main": "dist/index.js",
+  "bin": {
+    "blogger-mcp-server": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "googleapis": "^128.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.3.3",
+    "ts-node": "^10.9.2"
+  },
+  "type": "module"
+}
