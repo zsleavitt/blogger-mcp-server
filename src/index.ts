@@ -8,15 +8,25 @@ import {
   McpError,
 } from '@modelcontextprotocol/sdk/types.js';
 import { google } from 'googleapis';
+import { BloggerOAuth } from './oauth.js';
 
 const API_KEY = process.env.BLOGGER_API_KEY;
+const CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 
-if (!API_KEY) {
-  console.error('BLOGGER_API_KEY environment variable is required');
+// Check for OAuth credentials for write operations
+if (!CLIENT_ID || !CLIENT_SECRET) {
+  console.error('⚠️  OAuth credentials missing. Write operations (create/update/delete posts) will be disabled.');
+  console.error('To enable write operations, set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET environment variables.');
+  console.error('Read operations will still work with BLOGGER_API_KEY.');
+}
+
+if (!API_KEY && (!CLIENT_ID || !CLIENT_SECRET)) {
+  console.error('Either BLOGGER_API_KEY or OAuth credentials (GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET) are required');
   process.exit(1);
 }
 
-const blogger = google.blogger({ version: 'v3', auth: API_KEY });
+const oauthHandler = CLIENT_ID && CLIENT_SECRET ? new BloggerOAuth() : null;
 
 class BloggerMCPServer {
   private server: Server;
@@ -25,7 +35,7 @@ class BloggerMCPServer {
     this.server = new Server(
       {
         name: 'blogger-mcp-server',
-        version: '1.0.0',
+        version: '1.1.0',
       },
       {
         capabilities: {
@@ -42,6 +52,22 @@ class BloggerMCPServer {
       await this.server.close();
       process.exit(0);
     });
+  }
+
+  private async getAuthClient(requireWrite: boolean = false) {
+    if (requireWrite && oauthHandler) {
+      // Use OAuth for write operations
+      return await oauthHandler.getAuthenticatedClient();
+    } else if (API_KEY) {
+      // Use API key for read operations
+      return API_KEY;
+    } else {
+      throw new Error('No authentication method available');
+    }
+  }
+
+  private getBloggerClient(auth: any) {
+    return google.blogger({ version: 'v3', auth });
   }
 
   private setupToolHandlers() {
@@ -117,6 +143,87 @@ class BloggerMCPServer {
               required: ['blogId', 'query'],
             },
           },
+          {
+            name: 'create_post',
+            description: 'Create a new blog post',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                blogId: {
+                  type: 'string',
+                  description: 'Blog ID',
+                },
+                title: {
+                  type: 'string',
+                  description: 'Post title',
+                },
+                content: {
+                  type: 'string',
+                  description: 'Post content (HTML allowed)',
+                },
+                labels: {
+                  type: 'array',
+                  items: { type: 'string' },
+                  description: 'Post labels/tags (optional)',
+                },
+                isDraft: {
+                  type: 'boolean',
+                  description: 'Whether to create as draft (default: false)',
+                  default: false,
+                },
+              },
+              required: ['blogId', 'title', 'content'],
+            },
+          },
+          {
+            name: 'update_post',
+            description: 'Update an existing blog post',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                blogId: {
+                  type: 'string',
+                  description: 'Blog ID',
+                },
+                postId: {
+                  type: 'string',
+                  description: 'Post ID',
+                },
+                title: {
+                  type: 'string',
+                  description: 'New post title (optional)',
+                },
+                content: {
+                  type: 'string',
+                  description: 'New post content (HTML allowed, optional)',
+                },
+                labels: {
+                  type: 'array',
+                  items: { type: 'string' },
+                  description: 'New post labels/tags (optional)',
+                },
+              },
+              required: ['blogId', 'postId'],
+            },
+          },
+          {
+            name: 'delete_post',
+            description: 'Delete a blog post',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                blogId: {
+                  type: 'string',
+                  description: 'Blog ID',
+                },
+                postId: {
+                  type: 'string',
+                  description: 'Post ID',
+                },
+              },
+              required: ['blogId', 'postId'],
+            },
+          },
         ],
       };
     });
@@ -142,6 +249,27 @@ class BloggerMCPServer {
           case 'search_posts':
             return await this.searchPosts(args.blogId as string, args.query as string);
           
+          case 'create_post':
+            return await this.createPost(
+              args.blogId as string,
+              args.title as string,
+              args.content as string,
+              args.labels as string[] || [],
+              args.isDraft as boolean || false
+            );
+          
+          case 'update_post':
+            return await this.updatePost(
+              args.blogId as string,
+              args.postId as string,
+              args.title as string,
+              args.content as string,
+              args.labels as string[]
+            );
+          
+          case 'delete_post':
+            return await this.deletePost(args.blogId as string, args.postId as string);
+          
           default:
             throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${name}`);
         }
@@ -154,17 +282,19 @@ class BloggerMCPServer {
 
   private async getBlogInfo(blogUrl: string) {
     try {
+      const auth = await this.getAuthClient(false); // Read operation
+      const bloggerClient = this.getBloggerClient(auth);
       let response;
       
       // Check if it's a URL or ID
       if (blogUrl.includes('.')) {
         // It's a URL
-        response = await blogger.blogs.getByUrl({
+        response = await bloggerClient.blogs.getByUrl({
           url: blogUrl.startsWith('http') ? blogUrl : `https://${blogUrl}`,
         });
       } else {
         // It's an ID
-        response = await blogger.blogs.get({
+        response = await bloggerClient.blogs.get({
           blogId: blogUrl,
         });
       }
@@ -198,7 +328,10 @@ class BloggerMCPServer {
 
   private async listPosts(blogId: string, maxResults: number) {
     try {
-      const response = await blogger.posts.list({
+      const auth = await this.getAuthClient(false); // Read operation
+      const bloggerClient = this.getBloggerClient(auth);
+      
+      const response = await bloggerClient.posts.list({
         blogId,
         maxResults,
       });
@@ -226,7 +359,10 @@ class BloggerMCPServer {
 
   private async getPost(blogId: string, postId: string) {
     try {
-      const response = await blogger.posts.get({
+      const auth = await this.getAuthClient(false); // Read operation
+      const bloggerClient = this.getBloggerClient(auth);
+      
+      const response = await bloggerClient.posts.get({
         blogId,
         postId,
       });
@@ -251,7 +387,10 @@ class BloggerMCPServer {
 
   private async searchPosts(blogId: string, query: string) {
     try {
-      const response = await blogger.posts.search({
+      const auth = await this.getAuthClient(false); // Read operation
+      const bloggerClient = this.getBloggerClient(auth);
+      
+      const response = await bloggerClient.posts.search({
         blogId,
         q: query,
       });
@@ -274,6 +413,111 @@ class BloggerMCPServer {
       };
     } catch (error) {
       throw new McpError(ErrorCode.InternalError, `Failed to search posts: ${error}`);
+    }
+  }
+
+  private async createPost(blogId: string, title: string, content: string, labels: string[] = [], isDraft: boolean = false) {
+    try {
+      if (!oauthHandler) {
+        throw new Error('OAuth authentication required for creating posts. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.');
+      }
+
+      const auth = await this.getAuthClient(true); // Write operation requires OAuth
+      const bloggerClient = this.getBloggerClient(auth);
+      
+      const post = {
+        kind: 'blogger#post',
+        blog: { id: blogId },
+        title,
+        content,
+        labels,
+      };
+
+      const response = await bloggerClient.posts.insert({
+        blogId,
+        requestBody: post,
+        isDraft,
+      });
+
+      const createdPost = response.data;
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Successfully created ${isDraft ? 'draft' : 'post'}: **${createdPost.title}**\n\n` +
+              `Post ID: ${createdPost.id}\n` +
+              `URL: ${createdPost.url}\n` +
+              `Status: ${isDraft ? 'Draft' : 'Published'}\n` +
+              `Published: ${createdPost.published}`,
+          },
+        ],
+      };
+    } catch (error) {
+      throw new McpError(ErrorCode.InternalError, `Failed to create post: ${error}`);
+    }
+  }
+
+  private async updatePost(blogId: string, postId: string, title?: string, content?: string, labels?: string[]) {
+    try {
+      if (!oauthHandler) {
+        throw new Error('OAuth authentication required for updating posts. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.');
+      }
+
+      const auth = await this.getAuthClient(true); // Write operation requires OAuth
+      const bloggerClient = this.getBloggerClient(auth);
+      
+      const updateData: any = {};
+      if (title) updateData.title = title;
+      if (content) updateData.content = content;
+      if (labels) updateData.labels = labels;
+
+      const response = await bloggerClient.posts.patch({
+        blogId,
+        postId,
+        requestBody: updateData,
+      });
+
+      const updatedPost = response.data;
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Successfully updated post: **${updatedPost.title}**\n\n` +
+              `Post ID: ${updatedPost.id}\n` +
+              `URL: ${updatedPost.url}\n` +
+              `Last Updated: ${updatedPost.updated}`,
+          },
+        ],
+      };
+    } catch (error) {
+      throw new McpError(ErrorCode.InternalError, `Failed to update post: ${error}`);
+    }
+  }
+
+  private async deletePost(blogId: string, postId: string) {
+    try {
+      if (!oauthHandler) {
+        throw new Error('OAuth authentication required for deleting posts. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.');
+      }
+
+      const auth = await this.getAuthClient(true); // Write operation requires OAuth
+      const bloggerClient = this.getBloggerClient(auth);
+      
+      await bloggerClient.posts.delete({
+        blogId,
+        postId,
+      });
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Successfully deleted post with ID: ${postId}`,
+          },
+        ],
+      };
+    } catch (error) {
+      throw new McpError(ErrorCode.InternalError, `Failed to delete post: ${error}`);
     }
   }
 

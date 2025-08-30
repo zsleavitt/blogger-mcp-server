@@ -93,3 +93,7 @@ jspm_packages/
 # API keys and secrets
 config/keys.json
 secrets.json
+tokens.json
+
+# OAuth tokens
+*.tokens
