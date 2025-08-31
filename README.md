@@ -75,10 +75,37 @@ Completely close and restart Claude Desktop to load the new configuration.
 
 Once configured, you can interact with your Blogger blog through natural language:
 
+**Read Operations:**
 - "Get information about my blog at myblog.blogspot.com"
 - "List the recent posts on my blog"
 - "Search for posts about photography in my blog"
 - "Show me the details of post ID 123456789"
+
+**Write Operations (requires OAuth):**
+- "Create a draft blog post about my recent photo shoot"
+- "Update the post with ID 123456789"
+- "Delete the draft post with ID 987654321"
+
+**Important**: Always use the correct blog URL or ID. The server will target the specific blog you reference in your requests.
+
+### Finding Your Blog ID
+
+To get your blog ID, use the `get_blog_info` tool with your blog URL:
+
+```
+"Get information about my blog at myblog.blogspot.com"
+```
+
+The response will include the blog ID that you can use for other operations. For example:
+```json
+{
+  "id": "1234567890123456789",
+  "name": "My Blog",
+  "url": "https://myblog.blogspot.com/"
+}
+```
+
+Use the `id` field for subsequent operations like creating posts.
 
 ## Available Tools
 
@@ -145,15 +172,57 @@ Note these Blogger API limitations:
 
 ## Troubleshooting
 
-### Server Not Connecting
-1. Verify your API key is correct and has Blogger API access
-2. Check that the path in your MCP configuration is correct
-3. Ensure Claude Desktop was fully restarted after configuration changes
+### Common Issues and Solutions
 
-### API Errors
-- Verify the blog URL/ID is correct
-- Check that your API key has proper permissions
-- Ensure the blog is public or you have access rights
+#### Server Not Connecting
+1. **Wrong command in configuration**: Ensure you're using `"command": "node"` not `"command": "npx"`
+2. **Incorrect file path**: Use the absolute path to `dist/index.js`, not a placeholder path
+3. **File permissions**: Run `chmod +x dist/index.js` to make the file executable
+4. **Restart required**: Completely quit and restart Claude Desktop after configuration changes
+
+#### OAuth Authentication Issues
+1. **Missing redirect URI**: Add `http://localhost:3000/oauth/callback` to your OAuth client in Google Cloud Console
+2. **Wrong application type**: Use "Web application" not "Desktop application" for OAuth client
+3. **Missing scopes**: Ensure both `https://www.googleapis.com/auth/blogger` and `https://www.googleapis.com/auth/blogger.readonly` are added to OAuth consent screen
+4. **Test user setup**: Add your Google account as a test user if the app is in testing mode
+
+#### "Tool execution failed" Errors
+1. **Wrong blog ID**: Ensure you're using the correct blog ID for your target blog
+2. **ES module errors**: If you see `__dirname is not defined`, rebuild the project with `npm run build`
+3. **Token file permissions**: Tokens should save to the project directory, not system root
+4. **Stale tokens**: Delete `tokens.json` and restart to force fresh OAuth flow
+
+#### Permission Errors
+- **"You don't have permission to access this resource"**: Verify you're targeting the correct blog ID and have admin access
+- **Blog ownership**: Confirm you can manually create posts on the target blog via blogger.com
+- **OAuth scope issues**: Ensure the OAuth consent screen includes both read and write Blogger scopes
+
+### Debug Commands
+
+```bash
+# Test server startup
+node dist/index.js
+
+# Check OAuth token loading (replace with your actual credentials)
+GOOGLE_CLIENT_ID="your_id" GOOGLE_CLIENT_SECRET="your_secret" node -e "import('./dist/oauth.js').then(async ({BloggerOAuth}) => { const oauth = new BloggerOAuth(); const client = await oauth.getAuthenticatedClient(); console.log('Token scopes:', client.credentials); });"
+
+# View recent logs
+tail -30 ~/Library/Logs/Claude/mcp-server-blogger.log
+
+# Make file executable
+chmod +x dist/index.js
+
+# Clean rebuild
+npm run build
+```
+
+### Common Error Messages
+
+- **"npm ERR! ENOENT: no such file or directory"**: Using `npx` instead of `node` in configuration
+- **"__dirname is not defined in ES module scope"**: Need to rebuild project after ES module fixes
+- **"EROFS: read-only file system"**: Token file trying to save in wrong location
+- **"We're sorry, but you don't have permission to access this resource"**: Wrong blog ID or insufficient OAuth scopes
+- **"Tool execution failed"**: Generic error - check logs for specific details
 
 ### Windows Path Issues
 Use double backslashes in Windows paths:

@@ -6,7 +6,9 @@
         "/absolute/path/to/blogger-mcp-server/dist/index.js"
       ],
       "env": {
-        "BLOGGER_API_KEY": "your_google_api_key_here"
+        "BLOGGER_API_KEY": "your_google_api_key_here",
+        "GOOGLE_CLIENT_ID": "your_oauth_client_id_here",
+        "GOOGLE_CLIENT_SECRET": "your_oauth_client_secret_here"
       }
     }
   }

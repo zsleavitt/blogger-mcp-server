@@ -35,7 +35,7 @@ class BloggerMCPServer {
     this.server = new Server(
       {
         name: 'blogger-mcp-server',
-        version: '1.1.0',
+        version: '1.1.1',
       },
       {
         capabilities: {
@@ -427,31 +427,48 @@ class BloggerMCPServer {
       
       const post = {
         kind: 'blogger#post',
-        blog: { id: blogId },
         title,
         content,
         labels,
       };
 
-      const response = await bloggerClient.posts.insert({
-        blogId,
-        requestBody: post,
-        isDraft,
-      });
-
-      const createdPost = response.data;
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Successfully created ${isDraft ? 'draft' : 'post'}: **${createdPost.title}**\n\n` +
-              `Post ID: ${createdPost.id}\n` +
-              `URL: ${createdPost.url}\n` +
-              `Status: ${isDraft ? 'Draft' : 'Published'}\n` +
-              `Published: ${createdPost.published}`,
-          },
-        ],
-      };
+      // Use the correct API pattern for drafts
+      if (isDraft) {
+        const response = await bloggerClient.posts.insert({
+          blogId,
+          requestBody: post,
+          isDraft: true,
+        });
+        const createdPost = response.data;
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Successfully created draft: **${createdPost.title}**\n\n` +
+                `Post ID: ${createdPost.id}\n` +
+                `Status: Draft\n` +
+                `Created: ${createdPost.published || 'Draft (not published)'}`,
+            },
+          ],
+        };
+      } else {
+        const response = await bloggerClient.posts.insert({
+          blogId,
+          requestBody: post,
+        });
+        const createdPost = response.data;
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Successfully created post: **${createdPost.title}**\n\n` +
+                `Post ID: ${createdPost.id}\n` +
+                `URL: ${createdPost.url}\n` +
+                `Published: ${createdPost.published}`,
+            },
+          ],
+        };
+      }
     } catch (error) {
       throw new McpError(ErrorCode.InternalError, `Failed to create post: ${error}`);
     }

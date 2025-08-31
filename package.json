@@ -1,6 +1,6 @@
 {
   "name": "blogger-mcp-server-fixed",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Working MCP Server for Blogger API",
   "main": "dist/index.js",
   "bin": {

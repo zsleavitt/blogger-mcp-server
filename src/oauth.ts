@@ -3,6 +3,11 @@ import express from 'express';
 import open from 'open';
 import fs from 'fs/promises';
 import path from 'path';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 interface OAuthConfig {
   clientId: string;
@@ -29,10 +34,10 @@ export class BloggerOAuth {
       clientId: process.env.GOOGLE_CLIENT_ID || '',
       clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
       redirectUri: 'http://localhost:3000/oauth/callback',
-      scopes: ['https://www.googleapis.com/auth/blogger']
+      scopes: ['https://www.googleapis.com/auth/blogger', 'https://www.googleapis.com/auth/blogger.readonly']
     };
 
-    this.tokenFile = path.join(process.cwd(), 'tokens.json');
+    this.tokenFile = path.join(__dirname, '..', 'tokens.json');
     
     this.oauth2Client = new google.auth.OAuth2(
       this.config.clientId,
