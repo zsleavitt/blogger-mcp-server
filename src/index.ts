@@ -103,6 +103,11 @@ class BloggerMCPServer {
                   description: 'Maximum number of posts to return (default: 10)',
                   default: 10,
                 },
+                status: {
+                  type: 'string',
+                  description: 'Filter posts by status: "draft", "live", or "scheduled" (optional). Note: Drafts require OAuth authentication.',
+                  enum: ['draft', 'live', 'scheduled'],
+                },
               },
               required: ['blogId'],
             },
@@ -241,7 +246,11 @@ class BloggerMCPServer {
             return await this.getBlogInfo(args.blogUrl as string);
           
           case 'list_posts':
-            return await this.listPosts(args.blogId as string, (args.maxResults as number) || 10);
+            return await this.listPosts(
+              args.blogId as string, 
+              (args.maxResults as number) || 10,
+              args.status as string | undefined
+            );
           
           case 'get_post':
             return await this.getPost(args.blogId as string, args.postId as string);
@@ -326,27 +335,38 @@ class BloggerMCPServer {
     }
   }
 
-  private async listPosts(blogId: string, maxResults: number) {
+  private async listPosts(blogId: string, maxResults: number, status?: string) {
     try {
-      const auth = await this.getAuthClient(false); // Read operation
+      // Drafts require OAuth authentication
+      const requireOAuth = status === 'draft' || status === 'scheduled';
+      const auth = await this.getAuthClient(requireOAuth);
       const bloggerClient = this.getBloggerClient(auth);
       
-      const response = await bloggerClient.posts.list({
+      const listParams: any = {
         blogId,
         maxResults,
-      });
+      };
+      
+      // Add status filter if provided
+      if (status) {
+        listParams.status = status.toUpperCase();
+      }
+      
+      const response = await bloggerClient.posts.list(listParams);
 
       const posts = response.data.items || [];
+      const statusText = status ? ` (status: ${status})` : '';
       return {
         content: [
           {
             type: 'text',
-            text: `Found ${posts.length} posts:\n\n` +
+            text: `Found ${posts.length} posts${statusText}:\n\n` +
               posts.map(post => 
                 `**${post.title}**\n` +
                 `ID: ${post.id}\n` +
                 `Published: ${post.published}\n` +
-                `URL: ${post.url}\n` +
+                `Status: ${post.status || 'live'}\n` +
+                (post.url ? `URL: ${post.url}\n` : '') +
                 `---`
               ).join('\n\n'),
           },
