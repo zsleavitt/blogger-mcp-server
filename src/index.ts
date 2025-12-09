@@ -379,12 +379,23 @@ class BloggerMCPServer {
 
   private async getPost(blogId: string, postId: string) {
     try {
-      const auth = await this.getAuthClient(false); // Read operation
+      // Use OAuth for getPost since it needs to access both published and draft posts
+      // API key can only access published posts, so OAuth is required for drafts
+      // If OAuth is not available, try API key as fallback (will only work for published posts)
+      let auth;
+      try {
+        auth = await this.getAuthClient(true); // Try OAuth first
+      } catch (error) {
+        // Fallback to API key if OAuth fails (will only work for published posts)
+        auth = await this.getAuthClient(false);
+      }
       const bloggerClient = this.getBloggerClient(auth);
       
       const response = await bloggerClient.posts.get({
         blogId,
         postId,
+        fetchBody: true,
+        fetchImages: true,
       });
 
       const post = response.data;
@@ -395,13 +406,16 @@ class BloggerMCPServer {
             text: `**${post.title}**\n\n` +
               `Published: ${post.published}\n` +
               `Updated: ${post.updated}\n` +
-              `URL: ${post.url}\n\n` +
-              `**Content:**\n${post.content}`,
+              `Status: ${post.status || 'live'}\n` +
+              (post.url ? `URL: ${post.url}\n` : '') +
+              `\n**Content:**\n${post.content || '(No content)'}`,
           },
         ],
       };
-    } catch (error) {
-      throw new McpError(ErrorCode.InternalError, `Failed to get post: ${error}`);
+    } catch (error: any) {
+      const errorMessage = error?.message || String(error);
+      const errorDetails = error?.response?.data ? JSON.stringify(error.response.data) : '';
+      throw new McpError(ErrorCode.InternalError, `Failed to get post: ${errorMessage}${errorDetails ? ` - ${errorDetails}` : ''}`);
     }
   }
 
