@@ -378,23 +378,40 @@ class BloggerMCPServer {
         listParams.status = status.toLowerCase();
       }
       
+      // For drafts, fetch full content to avoid needing separate get_post calls
+      if (status === 'draft' || status === 'scheduled') {
+        listParams.fetchBodies = true;
+        listParams.fetchImages = true;
+      }
+      
       const response = await bloggerClient.posts.list(listParams);
 
       const posts = response.data.items || [];
       const statusText = status ? ` (status: ${status})` : '';
+      
+      // For drafts, include content in the response
+      const includeContent = status === 'draft' || status === 'scheduled';
+      
       return {
         content: [
           {
             type: 'text',
             text: `Found ${posts.length} posts${statusText}:\n\n` +
-              posts.map(post => 
-                `**${post.title}**\n` +
-                `ID: ${post.id}\n` +
-                `Published: ${post.published}\n` +
-                `Status: ${post.status || 'live'}\n` +
-                (post.url ? `URL: ${post.url}\n` : '') +
-                `---`
-              ).join('\n\n'),
+              posts.map(post => {
+                let postText = `**${post.title}**\n` +
+                  `ID: ${post.id}\n` +
+                  `Published: ${post.published || 'Not published'}\n` +
+                  `Status: ${post.status || 'live'}\n` +
+                  (post.url ? `URL: ${post.url}\n` : '') +
+                  (post.labels && post.labels.length > 0 ? `Labels: ${post.labels.join(', ')}\n` : '');
+                
+                // Include content for drafts
+                if (includeContent && post.content) {
+                  postText += `\n**Content:**\n${post.content}\n`;
+                }
+                
+                return postText + `---`;
+              }).join('\n\n'),
           },
         ],
       };
