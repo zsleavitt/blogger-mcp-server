@@ -60,7 +60,10 @@ For **Claude Desktop**, add to your `claude_desktop_config.json`:
         "/path/to/blogger-mcp-server/dist/index.js"
       ],
       "env": {
-        "BLOGGER_API_KEY": "your_google_api_key_here"
+        "BLOGGER_API_KEY": "your_google_api_key_here",
+        "BLOGGER_ID": "your_blog_id_here",
+        "GOOGLE_CLIENT_ID": "your_oauth_client_id_here",
+        "GOOGLE_CLIENT_SECRET": "your_oauth_client_secret_here"
       }
     }
   }
@@ -107,6 +110,29 @@ The response will include the blog ID that you can use for other operations. For
 
 Use the `id` field for subsequent operations like creating posts.
 
+### Environment Variables
+
+**BLOGGER_API_KEY** (required for read operations)
+- Your Google Cloud API key with Blogger API v3 enabled
+- Used for read-only operations (listing published posts, getting blog info, etc.)
+
+**BLOGGER_ID** (optional, recommended)
+- Your blog's numeric ID (e.g., "1234567890123456789")
+- **Purpose**: Provides a default blog ID when not explicitly specified in tool calls
+- **Benefits**: 
+  - Eliminates the need to specify the blog ID in every request when working with a single blog
+  - Acts as a fallback when `blogId` or `blogUrl` parameters are missing or empty
+  - Makes commands more concise: "List my draft posts" instead of "List draft posts for blog 1234567890123456789"
+- **How to find**: Use the `get_blog_info` tool with your blog URL to retrieve the ID
+- **Note**: You can still override this by explicitly providing a `blogId` in any tool call
+
+**GOOGLE_CLIENT_ID** and **GOOGLE_CLIENT_SECRET** (required for write operations and drafts)
+- OAuth 2.0 credentials from Google Cloud Console
+- Required for creating, updating, or deleting posts
+- Required for accessing draft posts (drafts require authenticated access)
+- Required for listing scheduled posts
+- See [OAUTH_SETUP.md](./OAUTH_SETUP.md) for detailed setup instructions
+
 ## Available Tools
 
 ### get_blog_info
@@ -116,11 +142,12 @@ Get comprehensive information about a blog.
 - `blogUrl` (string): Blog URL (e.g., `myblog.blogspot.com`) or Blog ID
 
 ### list_posts
-List posts from a specific blog.
+List posts from a specific blog. Can filter by status to show drafts, published posts, or scheduled posts.
 
 **Parameters:**
-- `blogId` (string): The blog's ID
+- `blogId` (string, optional): The blog's ID. If not provided, uses BLOGGER_ID from environment variables
 - `maxResults` (number, optional): Maximum posts to return (default: 10)
+- `status` (string, optional): Filter by status - "draft", "live", or "scheduled". Note: Drafts and scheduled posts require OAuth authentication
 
 ### get_post
 Retrieve a specific blog post.

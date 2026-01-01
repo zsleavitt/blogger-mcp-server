@@ -13,6 +13,14 @@ import { BloggerOAuth } from './oauth.js';
 const API_KEY = process.env.BLOGGER_API_KEY;
 const CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+const BLOGGER_ID = process.env.BLOGGER_ID;
+
+// BLOGGER_ID is an optional convenience variable that provides a default blog ID
+// when not explicitly provided in tool calls. This is useful when working with
+// a single blog, as it eliminates the need to specify the blog ID in every request.
+// If BLOGGER_ID is set, it will be used as a fallback when blogId/blogUrl parameters
+// are missing or empty. You can find your blog ID by using the get_blog_info tool
+// with your blog URL (e.g., myblog.blogspot.com).
 
 // Check for OAuth credentials for write operations
 if (!CLIENT_ID || !CLIENT_SECRET) {
@@ -291,20 +299,26 @@ class BloggerMCPServer {
 
   private async getBlogInfo(blogUrl: string) {
     try {
+      // Use BLOGGER_ID as default if blogUrl is not provided
+      const targetBlog = blogUrl || BLOGGER_ID;
+      if (!targetBlog) {
+        throw new Error('blogUrl is required. Either provide it in the request or set BLOGGER_ID environment variable.');
+      }
+
       const auth = await this.getAuthClient(false); // Read operation
       const bloggerClient = this.getBloggerClient(auth);
       let response;
       
       // Check if it's a URL or ID
-      if (blogUrl.includes('.')) {
+      if (targetBlog.includes('.')) {
         // It's a URL
         response = await bloggerClient.blogs.getByUrl({
-          url: blogUrl.startsWith('http') ? blogUrl : `https://${blogUrl}`,
+          url: targetBlog.startsWith('http') ? targetBlog : `https://${targetBlog}`,
         });
       } else {
         // It's an ID
         response = await bloggerClient.blogs.get({
-          blogId: blogUrl,
+          blogId: targetBlog,
         });
       }
 
@@ -337,19 +351,31 @@ class BloggerMCPServer {
 
   private async listPosts(blogId: string, maxResults: number, status?: string) {
     try {
-      // Drafts require OAuth authentication
+      // Use BLOGGER_ID as default if blogId is not provided
+      const targetBlogId = blogId || BLOGGER_ID;
+      if (!targetBlogId) {
+        throw new Error('blogId is required. Either provide it in the request or set BLOGGER_ID environment variable.');
+      }
+
+      // Drafts and scheduled posts require OAuth authentication
       const requireOAuth = status === 'draft' || status === 'scheduled';
+      
+      if (requireOAuth && !oauthHandler) {
+        throw new Error('OAuth authentication required for listing draft or scheduled posts. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.');
+      }
+
       const auth = await this.getAuthClient(requireOAuth);
       const bloggerClient = this.getBloggerClient(auth);
       
       const listParams: any = {
-        blogId,
+        blogId: targetBlogId,
         maxResults,
       };
       
       // Add status filter if provided
+      // Blogger API expects: 'draft', 'live', or 'scheduled' (lowercase)
       if (status) {
-        listParams.status = status.toUpperCase();
+        listParams.status = status.toLowerCase();
       }
       
       const response = await bloggerClient.posts.list(listParams);
@@ -379,6 +405,12 @@ class BloggerMCPServer {
 
   private async getPost(blogId: string, postId: string) {
     try {
+      // Use BLOGGER_ID as default if blogId is not provided
+      const targetBlogId = blogId || BLOGGER_ID;
+      if (!targetBlogId) {
+        throw new Error('blogId is required. Either provide it in the request or set BLOGGER_ID environment variable.');
+      }
+
       // Use OAuth for getPost since it needs to access both published and draft posts
       // API key can only access published posts, so OAuth is required for drafts
       // If OAuth is not available, try API key as fallback (will only work for published posts)
@@ -392,7 +424,7 @@ class BloggerMCPServer {
       const bloggerClient = this.getBloggerClient(auth);
       
       const response = await bloggerClient.posts.get({
-        blogId,
+        blogId: targetBlogId,
         postId,
         fetchBody: true,
         fetchImages: true,
@@ -421,11 +453,17 @@ class BloggerMCPServer {
 
   private async searchPosts(blogId: string, query: string) {
     try {
+      // Use BLOGGER_ID as default if blogId is not provided
+      const targetBlogId = blogId || BLOGGER_ID;
+      if (!targetBlogId) {
+        throw new Error('blogId is required. Either provide it in the request or set BLOGGER_ID environment variable.');
+      }
+
       const auth = await this.getAuthClient(false); // Read operation
       const bloggerClient = this.getBloggerClient(auth);
       
       const response = await bloggerClient.posts.search({
-        blogId,
+        blogId: targetBlogId,
         q: query,
       });
 
@@ -452,6 +490,12 @@ class BloggerMCPServer {
 
   private async createPost(blogId: string, title: string, content: string, labels: string[] = [], isDraft: boolean = false) {
     try {
+      // Use BLOGGER_ID as default if blogId is not provided
+      const targetBlogId = blogId || BLOGGER_ID;
+      if (!targetBlogId) {
+        throw new Error('blogId is required. Either provide it in the request or set BLOGGER_ID environment variable.');
+      }
+
       if (!oauthHandler) {
         throw new Error('OAuth authentication required for creating posts. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.');
       }
@@ -469,7 +513,7 @@ class BloggerMCPServer {
       // Use the correct API pattern for drafts
       if (isDraft) {
         const response = await bloggerClient.posts.insert({
-          blogId,
+          blogId: targetBlogId,
           requestBody: post,
           isDraft: true,
         });
@@ -487,7 +531,7 @@ class BloggerMCPServer {
         };
       } else {
         const response = await bloggerClient.posts.insert({
-          blogId,
+          blogId: targetBlogId,
           requestBody: post,
         });
         const createdPost = response.data;
@@ -510,6 +554,12 @@ class BloggerMCPServer {
 
   private async updatePost(blogId: string, postId: string, title?: string, content?: string, labels?: string[]) {
     try {
+      // Use BLOGGER_ID as default if blogId is not provided
+      const targetBlogId = blogId || BLOGGER_ID;
+      if (!targetBlogId) {
+        throw new Error('blogId is required. Either provide it in the request or set BLOGGER_ID environment variable.');
+      }
+
       if (!oauthHandler) {
         throw new Error('OAuth authentication required for updating posts. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.');
       }
@@ -523,7 +573,7 @@ class BloggerMCPServer {
       if (labels) updateData.labels = labels;
 
       const response = await bloggerClient.posts.patch({
-        blogId,
+        blogId: targetBlogId,
         postId,
         requestBody: updateData,
       });
@@ -547,6 +597,12 @@ class BloggerMCPServer {
 
   private async deletePost(blogId: string, postId: string) {
     try {
+      // Use BLOGGER_ID as default if blogId is not provided
+      const targetBlogId = blogId || BLOGGER_ID;
+      if (!targetBlogId) {
+        throw new Error('blogId is required. Either provide it in the request or set BLOGGER_ID environment variable.');
+      }
+
       if (!oauthHandler) {
         throw new Error('OAuth authentication required for deleting posts. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.');
       }
@@ -555,7 +611,7 @@ class BloggerMCPServer {
       const bloggerClient = this.getBloggerClient(auth);
       
       await bloggerClient.posts.delete({
-        blogId,
+        blogId: targetBlogId,
         postId,
       });
 

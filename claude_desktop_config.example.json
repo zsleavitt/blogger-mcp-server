@@ -7,6 +7,7 @@
       ],
       "env": {
         "BLOGGER_API_KEY": "your_google_api_key_here",
+        "BLOGGER_ID": "your_blog_id_here_optional_but_recommended",
         "GOOGLE_CLIENT_ID": "your_oauth_client_id_here",
         "GOOGLE_CLIENT_SECRET": "your_oauth_client_secret_here"
       }
